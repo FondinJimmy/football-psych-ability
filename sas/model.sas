@@ -11,70 +11,69 @@
  * (These are injected at run time, never committed.)
  *****************************************************************************/
 
-%let run_id    = glmselect_v1;
-%let model_nm  = GLMSELECT stepwise (mentality -> overall);
+%let run_id   = ols_v1;
+%let model_nm = OLS: overall ~ mentality profile;
+%let cols = player_id,overall,mentality_composure,mentality_aggression,mentality_vision,mentality_positioning,mentality_penalties,mentality_interceptions,movement_reactions;
 
-/*--- 1. Pull data from Supabase REST (PostgREST), paginated -----------------*/
+/*--- 1. Pull data from Supabase REST (PostgREST), paginated via Range header */
 %macro pull_players;
-    %let page = 0;
-    %let pagesize = 1000;
-    %let more = 1;
-    data players; stop; run;  /* empty shell */
+    %let page = 0; %let pagesize = 1000; %let more = 1;
     %do %while (&more = 1);
-        %let off = %eval(&page * &pagesize);
+        %let lo = %eval(&page * &pagesize);
+        %let hi = %eval(&lo + &pagesize - 1);
         filename resp temp;
         proc http
-            url="&supabase_url./rest/v1/players?select=player_id,overall,mentality_composure,mentality_aggression,mentality_vision,mentality_positioning,mentality_penalties,mentality_interceptions,movement_reactions&limit=&pagesize.&offset=&off"
+            url="&supabase_url./rest/v1/players?select=&cols"
             method="GET" out=resp;
-            headers "apikey"="&supabase_key" "Authorization"="Bearer &supabase_key";
+            headers "apikey"="&supabase_key" "Authorization"="Bearer &supabase_key"
+                    "Range-Unit"="items" "Range"="&lo.-&hi.";
         run;
         libname j json fileref=resp;
-        proc sql noprint; select count(*) into :n from j.root; quit;
-        %if &n > 0 %then %do;
-            data chunk; set j.root; run;
-            proc append base=players data=chunk force; run;
+        proc sql noprint; select count(*) into :n trimmed from j.root; quit;
+        %if &page = 0 %then %do;
+            data players; set j.root; run;   /* seed table from first page */
+        %end;
+        %else %if &n > 0 %then %do;
+            proc append base=players data=j.root force; run;
         %end;
         %if &n < &pagesize %then %let more = 0;
-        %let page = %eval(&page + 1);
         libname j clear;
+        %let page = %eval(&page + 1);
     %end;
-    proc sql noprint; select count(*) into :nobs from players; quit;
+    proc sql noprint; select count(*) into :nobs trimmed from players; quit;
     %put NOTE: pulled &nobs players from Supabase;
 %mend;
 %pull_players;
 
-/*--- 2. Model: OVERALL ~ psychological profile -----------------------------*/
-ods output FitStatistics=fit ParameterEstimates=pe;
-proc glmselect data=players;
+/*--- 2. Model: OVERALL ~ psychological profile (OLS with standardized betas) */
+ods output ParameterEstimates=pe;
+proc reg data=players plots=none;
     model overall = mentality_composure mentality_aggression mentality_vision
                     mentality_positioning mentality_penalties
-                    mentality_interceptions movement_reactions
-        / selection=stepwise(select=sbc) stb;
-    output out=scored predicted=pred residual=resid;
-run;
-
-/* correlation-based importance proxy for visualization */
-proc corr data=players noprint outp=corrout;
-    var mentality_composure mentality_aggression mentality_vision
-        mentality_positioning mentality_penalties mentality_interceptions
-        movement_reactions;
-    with overall;
-run;
-
-/*--- 3. Assemble result tables ---------------------------------------------*/
-proc sql noprint;
-    select n into :n_obs from fit where label1='Observations Read';
+                    mentality_interceptions movement_reactions / stb;
+    output out=scored p=pred r=resid;
 quit;
 
-data _rsq;
-    set fit;
-    if upcase(label2)='R-SQUARE' then call symputx('rsq', cvalue2);
-    if upcase(label2)='ADJ R-SQ' then call symputx('adjrsq', cvalue2);
-    if upcase(label1)='ROOT MSE' then call symputx('rmse', cvalue1);
+/*--- 3. Compute fit statistics from the scored data (robust) ---------------*/
+%let k = 7;
+proc sql noprint;
+    select count(*)        into :nobs trimmed from scored;
+    select var(overall)    into :vary trimmed from scored;
+    select sum(resid*resid) into :sse trimmed from scored;
+quit;
+data _null_;
+    sst = &vary * (&nobs - 1);
+    r2  = 1 - &sse/sst;
+    adj = 1 - (1 - r2)*(&nobs - 1)/(&nobs - &k - 1);
+    rmse = sqrt(&sse/(&nobs - &k - 1));
+    call symputx('rsq',   put(r2,  best12.));
+    call symputx('adjrsq',put(adj, best12.));
+    call symputx('rmse',  put(rmse,best12.));
 run;
+%put NOTE: R2=&rsq Adj=&adjrsq RMSE=&rmse N=&nobs;
 
 /*--- 4. POST results back to Supabase --------------------------------------*/
-/* 4a. model_results */
+/* 4a. model_results (small -> macro var is fine) */
 filename body temp;
 data _null_;
     file body;
@@ -85,46 +84,57 @@ run;
 filename out temp;
 proc http url="&supabase_url./rest/v1/model_results" method="POST" in=body out=out;
     headers "apikey"="&supabase_key" "Authorization"="Bearer &supabase_key"
-            "Content-Type"="application/json"
-            "Prefer"="resolution=merge-duplicates";
+            "Content-Type"="application/json" "Prefer"="resolution=merge-duplicates";
 run;
+%put NOTE: model_results status=&SYS_PROCHTTP_STATUS_CODE;
 
-/* 4b. model_coefficients (one POST with a JSON array) */
+/* 4b. model_coefficients -> write JSON array to a file (no macro-var limit) */
 data _coef;
     set pe;
-    where upcase(parameter) ne 'INTERCEPT';
-    length json $400;
-    json = cats('{"run_id":"', "&run_id", '","variable":"', parameter,
-                '","estimate":', estimate,
-                ',"std_error":', stderr,
-                ',"t_value":', tvalue,
-                ',"p_value":', probt, '}');
+    where upcase(Variable) ne 'INTERCEPT';
+    length json $500;
+    json = cats('{"run_id":"', "&run_id", '","variable":"', Variable,
+                '","estimate":', Estimate,
+                ',"std_error":', StdErr,
+                ',"t_value":', tValue,
+                ',"p_value":', Probt,
+                ',"importance":', StandardizedEst, '}');
 run;
-proc sql noprint; select json into :coefjson separated by ',' from _coef; quit;
 filename body2 temp;
-data _null_; file body2; put "[&coefjson]"; run;
+data _null_;
+    file body2;
+    set _coef end=last;
+    if _n_ = 1 then put '[';
+    if last then put json; else put json ',';
+    if last then put ']';
+run;
 proc http url="&supabase_url./rest/v1/model_coefficients" method="POST" in=body2 out=out;
     headers "apikey"="&supabase_key" "Authorization"="Bearer &supabase_key"
-            "Content-Type"="application/json"
-            "Prefer"="resolution=merge-duplicates";
+            "Content-Type"="application/json" "Prefer"="resolution=merge-duplicates";
 run;
+%put NOTE: model_coefficients status=&SYS_PROCHTTP_STATUS_CODE;
 
-/* 4c. model_predictions (sample to keep payload reasonable) */
+/* 4c. model_predictions -> write JSON array to a file */
 data _pred;
     set scored;
     if not missing(pred);
-    length json $200;
+    length json $300;
     json = cats('{"run_id":"', "&run_id", '","player_id":', player_id,
                 ',"actual":', overall, ',"predicted":', round(pred,0.01),
                 ',"residual":', round(resid,0.01), '}');
 run;
-proc sql noprint; select json into :predjson separated by ',' from _pred; quit;
 filename body3 temp;
-data _null_; file body3; put "[&predjson]"; run;
+data _null_;
+    file body3;
+    set _pred end=last;
+    if _n_ = 1 then put '[';
+    if last then put json; else put json ',';
+    if last then put ']';
+run;
 proc http url="&supabase_url./rest/v1/model_predictions" method="POST" in=body3 out=out;
     headers "apikey"="&supabase_key" "Authorization"="Bearer &supabase_key"
-            "Content-Type"="application/json"
-            "Prefer"="resolution=merge-duplicates";
+            "Content-Type"="application/json" "Prefer"="resolution=merge-duplicates";
 run;
+%put NOTE: model_predictions status=&SYS_PROCHTTP_STATUS_CODE;
 
-%put NOTE: Modelling complete. R-square=&rsq  Adj=&adjrsq  RMSE=&rmse  N=&nobs;
+%put NOTE: Modelling complete. R2=&rsq Adj=&adjrsq RMSE=&rmse N=&nobs;

@@ -83,8 +83,8 @@
       <li><strong>Ingest</strong> &mdash; raw CSV cleaned in Python, loaded into a
         <strong>Supabase</strong> Postgres table (<code>players</code>).</li>
       <li><strong>Model</strong> &mdash; <strong>SAS&nbsp;Viya</strong> reads the table over the
-        Supabase REST API and fits a stepwise linear model
-        (<code>PROC GLMSELECT</code>) with <code>overall</code> as the explained variable.</li>
+        Supabase REST API and fits a linear regression
+        (<code>PROC REG</code>, standardized betas) with <code>overall</code> as the explained variable.</li>
       <li><strong>Persist</strong> &mdash; SAS Viya POSTs the fit statistics, coefficients
         and predictions back into Supabase (<code>model_results</code>,
         <code>model_coefficients</code>, <code>model_predictions</code>).</li>

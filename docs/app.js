@@ -2,7 +2,7 @@
 (function () {
   const cfg = window.SUPABASE_CONFIG;
   const status = document.getElementById("status");
-  const RUN_ID = "glmselect_v1";
+  const RUN_ID = "ols_v1";
 
   // Set repo link if hosted on github pages (owner.github.io/repo)
   const repoLink = document.getElementById("repo-link");
@@ -25,7 +25,7 @@
 
   Promise.all([
     api(`model_results?run_id=eq.${RUN_ID}`),
-    api(`model_coefficients?run_id=eq.${RUN_ID}&order=estimate.desc`),
+    api(`model_coefficients?run_id=eq.${RUN_ID}&order=importance.desc`),
     api(`model_predictions?run_id=eq.${RUN_ID}&limit=2000`),
   ])
     .then(([results, coefs, preds]) => {
@@ -60,7 +60,7 @@
   function renderCoef(coefs) {
     if (!coefs || !coefs.length) return;
     const labels = coefs.map((c) => pretty(c.variable));
-    const data = coefs.map((c) => Number(c.estimate));
+    const data = coefs.map((c) => Number(c.importance));
     new Chart(document.getElementById("coefChart"), {
       type: "bar",
       data: {
