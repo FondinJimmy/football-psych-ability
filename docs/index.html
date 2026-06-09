@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Predicting Football Ability from a Player's Psychological Profile</title>
+<title>Predicting Football Ability: Psychology vs Technique vs Physique</title>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 <header>
   <div class="wrap">
-    <h1>Can a player's <span class="accent">psychological profile</span> predict football ability?</h1>
+    <h1>What predicts football ability: <span class="accent">psychology</span>, technique, or physique?</h1>
     <p class="sub">A data pipeline from raw player data &rarr; Supabase &rarr; SAS Viya modelling &rarr; this page.</p>
   </div>
 </header>
@@ -19,128 +19,84 @@
   <section id="question">
     <h2>1. The question</h2>
     <p>
-      Coaches have long argued that what happens between a footballer's ears &mdash;
-      composure under pressure, aggression, vision, decision speed &mdash; matters as
-      much as raw athleticism. This project asks a measurable version of that question:
-      <strong>how much of a player's overall ability can be explained by their
-      psychological / mentality profile alone?</strong>
+      Coaches argue about what makes a great footballer: the mind (composure, vision,
+      decision speed), the craft (passing, dribbling, shooting), or the body (pace,
+      strength, stamina). This project measures all three. We model a player's
+      <strong>overall ability</strong> from 29 rated attributes split into three groups
+      &mdash; <span class="g-psych">psychological</span>,
+      <span class="g-tech">technical</span> and
+      <span class="g-phys">physical</span> &mdash; and ask
+      <strong>how much each group really explains</strong>, and which individual attributes carry weight.
     </p>
   </section>
 
   <section id="data">
     <h2>2. The data</h2>
     <p>
-      The modelling base is the <strong>FIFA&nbsp;22 complete player dataset</strong>
-      (~19,000 players). For each player it records an <code>overall</code> ability
-      rating (0&ndash;99) alongside a set of <em>mentality</em> attributes that map
-      closely onto psychological constructs:
+      The base is the <strong>FIFA&nbsp;22 complete player dataset</strong> (~19,000 players).
+      Each player has an <code>overall</code> ability rating (0&ndash;99) and 29 attributes
+      we group as:
     </p>
-    <ul class="cols">
-      <li><strong>Composure</strong> &mdash; emotional control under pressure</li>
-      <li><strong>Aggression</strong> &mdash; intensity / assertiveness</li>
-      <li><strong>Vision</strong> &mdash; anticipation &amp; awareness</li>
-      <li><strong>Positioning</strong> &mdash; spatial reasoning</li>
-      <li><strong>Penalties</strong> &mdash; performance in high-stakes moments</li>
-      <li><strong>Interceptions</strong> &mdash; reading the game</li>
-      <li><strong>Reactions</strong> &mdash; decision speed / game intelligence</li>
-    </ul>
+    <div class="grouplist">
+      <div><h4 class="g-psych">Psychological (7)</h4>composure, aggression, vision, positioning, penalties, interceptions, reactions</div>
+      <div><h4 class="g-tech">Technical (15)</h4>crossing, finishing, heading, short/long passing, volleys, dribbling, curve, FK accuracy, ball control, shot power, long shots, marking, standing &amp; sliding tackle</div>
+      <div><h4 class="g-phys">Physical (7)</h4>acceleration, sprint speed, agility, balance, jumping, stamina, strength</div>
+    </div>
     <p class="caveat">
-      <strong>Honest caveat:</strong> these are <em>scout-rated video-game attributes</em>,
-      not clinical psychometric tests. They are a proxy for a psychological profile, and
-      results should be read as "how well do rated mental attributes track ability",
-      not as the output of a validated personality instrument.
+      <strong>Honest caveat:</strong> these are <em>scout-rated video-game attributes</em>, not
+      clinical measurements. The "psychological" group is a proxy for a psychological profile,
+      not a validated personality instrument &mdash; read results as "how well do rated
+      attributes track ability", and note that FIFA's <em>reactions</em> and <em>composure</em>
+      partly act as summary ratings, which inflates the psychological group's apparent power.
     </p>
   </section>
 
   <section id="academic">
     <h2>3. What the research literature says</h2>
-    <p>
-      Real psychometric studies of footballers exist but rarely release individual-level
-      data. The consistent findings from that literature give us a benchmark for
-      interpreting our model:
-    </p>
     <ul>
-      <li>A meta-analysis of <strong>4,101 athletes</strong> found
-        <strong>conscientiousness</strong> and <strong>extraversion</strong> positively
-        correlated with athletic performance
+      <li>A meta-analysis of <strong>4,101 athletes</strong> found conscientiousness and
+        extraversion positively correlated with performance
         (<a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10813302/" target="_blank" rel="noopener">PMC10813302</a>).</li>
-      <li>In NCAA soccer, neuroticism + conscientiousness explained ~23% of coach
-        rating variance; conscientiousness alone ~8% of game-statistic variance.</li>
       <li>A study of women's football showed psychological factors add predictive power
         <em>beyond</em> physical ability
         (<a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10090955/" target="_blank" rel="noopener">PMC10090955</a>).</li>
     </ul>
-    <p>
-      The theme: psychological traits are real but <em>partial</em> predictors. We should
-      expect our mentality profile to explain a meaningful share of ability &mdash; not all
-      of it.
-    </p>
+    <p>The theme: psychological traits are real but <em>partial</em> predictors &mdash; which is exactly what we test here, now against technique and physique.</p>
   </section>
 
   <section id="models101">
-    <h2>4. A crash course in the models</h2>
-    <p>We fit two different kinds of statistical model and compare them. Here's what each one does, in plain language.</p>
-
-    <h3>Linear regression (OLS)</h3>
-    <p>
-      <strong>Ordinary Least Squares</strong> draws the straight-line relationship that
-      best predicts ability from the seven mental attributes. It assumes each attribute
-      contributes a fixed amount: "every extra point of <em>reactions</em> adds about
-      half a point of overall ability", and adds those contributions up. The line is
-      chosen to make the <em>squared</em> prediction errors as small as possible.
-    </p>
+    <h2>4. A crash course in the models &amp; metrics</h2>
     <dl class="glossary">
-      <dt>R&sup2; (R-squared)</dt>
-      <dd>The share of the variation in ability the model explains, from 0 (useless) to
-        1 (perfect). R&sup2;&nbsp;=&nbsp;0.79 means 79% of why players differ in ability is
-        captured by the profile; the other 21% is everything the model can't see.</dd>
-      <dt>RMSE</dt>
-      <dd>Root-mean-square error &mdash; the typical size of a prediction miss, in rating
-        points. Lower is better.</dd>
+      <dt>OLS regression</dt>
+      <dd>Ordinary Least Squares draws the best straight-line relationship: each attribute
+        contributes a fixed amount and they're summed. Errors are made as small as possible.</dd>
+      <dt>R&sup2;</dt>
+      <dd>Share of ability variation explained, 0&ndash;1. We fit each group <em>alone</em>
+        (standalone R&sup2;) and all together (full R&sup2;) to see what each adds.</dd>
       <dt>Standardized coefficient (&beta;)</dt>
-      <dd>Each attribute on a common scale so they're comparable. A bigger bar = a
-        stronger <em>independent</em> pull on predicted ability. These can be negative:
-        once <em>reactions</em> is accounted for, a higher <em>positioning</em> score can
-        be associated with slightly lower overall &mdash; a sign the attributes overlap
-        (multicollinearity), so the model splits credit between them.</dd>
-      <dt>p-value</dt>
-      <dd>How confident we are an effect is real and not noise. Tiny p-values (&lt;0.001)
-        mean the relationship is statistically solid &mdash; easy to achieve here because
-        we have ~19,000 players.</dd>
+      <dd>Each attribute on a common scale so bars are comparable. Bigger = stronger
+        <em>independent</em> contribution.</dd>
+      <dt>Why some bars are negative or tiny</dt>
+      <dd><strong>Multicollinearity.</strong> Many attributes overlap (a good dribbler is
+        usually a good ball-controller). When predictors carry the same information, the
+        model splits credit between them, and some flip negative or become statistically
+        insignificant &mdash; meaning they add nothing <em>once the others are present</em>,
+        not that they're irrelevant on their own.</dd>
+      <dt>Decision tree</dt>
+      <dd>Instead of one line, it splits players with yes/no questions and predicts the group
+        average &mdash; capturing nonlinear patterns a line misses. Its R&sup2; here is
+        <em>in-sample</em> and unpruned, so treat it as an upper bound, not a fair head-to-head.
+        (A true random forest isn't licensed on this Viya, so we use a single tree, <code>PROC HPSPLIT</code>.)</dd>
     </dl>
-
-    <h3>Decision tree</h3>
-    <p>
-      A <strong>decision tree</strong> takes the opposite approach: instead of one
-      straight line, it repeatedly splits players into groups with yes/no questions
-      ("is <em>reactions</em> above 70?", then "is <em>composure</em> above 60?") and
-      predicts the average ability within each final group. This lets it capture
-      <em>nonlinear</em> patterns and interactions a straight line misses &mdash; which is
-      why it usually fits a bit better.
-    </p>
-    <p class="caveat">
-      <strong>Why this isn't a random forest:</strong> a random forest averages hundreds
-      of trees and is the usual go-to, but that procedure isn't licensed on this SAS Viya
-      instance. We use a single tree (<code>PROC HPSPLIT</code>) as the nonlinear
-      comparison. Also note both R&sup2; values here are <em>in-sample</em> (measured on the
-      same data used to fit), so the tree's edge is partly genuine flexibility and partly
-      a tree's tendency to fit the training data closely &mdash; read the gap as
-      "nonlinearity helps", not "the tree is twice as good".
-    </p>
   </section>
 
   <section id="method">
     <h2>5. The pipeline</h2>
     <ol class="pipeline">
-      <li><strong>Ingest</strong> &mdash; raw CSV cleaned in Python, loaded into a
-        <strong>Supabase</strong> Postgres table (<code>players</code>).</li>
-      <li><strong>Model</strong> &mdash; <strong>SAS&nbsp;Viya</strong> reads the table over the
-        Supabase REST API and fits both models (<code>PROC REG</code> and
-        <code>PROC HPSPLIT</code>) with <code>overall</code> as the explained variable.</li>
-      <li><strong>Persist</strong> &mdash; SAS Viya POSTs fit statistics, coefficients,
-        per-position results and predictions back into Supabase.</li>
-      <li><strong>Visualize</strong> &mdash; this page reads those result tables live from
-        Supabase and renders everything below.</li>
+      <li><strong>Ingest</strong> &mdash; raw CSV cleaned in Python, loaded into <strong>Supabase</strong> Postgres.</li>
+      <li><strong>Model</strong> &mdash; <strong>SAS&nbsp;Viya</strong> reads the table over the REST API and fits group-only models, a full 29-variable OLS, and a decision tree, with <code>overall</code> as the target.</li>
+      <li><strong>Persist</strong> &mdash; fit statistics, per-variable coefficients, per-position fit and predictions are POSTed back to Supabase.</li>
+      <li><strong>Visualize</strong> &mdash; this page reads those tables live and renders everything below.</li>
     </ol>
   </section>
 
@@ -150,21 +106,25 @@
 
     <div class="cards" id="metric-cards"></div>
 
-    <h3>Which model wins? OLS vs. decision tree</h3>
-    <p class="muted">R&sup2; = share of ability variation explained (higher is better). The tree's extra flexibility buys a modest gain.</p>
-    <canvas id="compareChart" height="120"></canvas>
+    <h3>How much does each group explain on its own?</h3>
+    <p class="muted">Standalone R&sup2; for each attribute group, plus all together (full) and the decision tree. The surprise: the psychological group alone out-explains technique and physique.</p>
+    <canvas id="groupChart" height="150"></canvas>
+    <p id="group-text" class="muted"></p>
 
-    <h3>How strongly each mental attribute tracks ability</h3>
-    <p class="muted">Standardized OLS coefficients. Green = pulls ability up; red = pulls down once the others are held constant.</p>
-    <canvas id="coefChart" height="170"></canvas>
+    <h3>Which individual attributes carried value?</h3>
+    <p class="muted">Standardized coefficients in the full 29-variable model, coloured by group.
+      <span class="g-psych">&#9632; psychological</span>
+      <span class="g-tech">&#9632; technical</span>
+      <span class="g-phys">&#9632; physical</span>.
+      Bars near zero / negative add little once everything else is included.</p>
+    <canvas id="coefChart" height="560"></canvas>
 
-    <h3 class="interactive-tag">&#9889; Try it: predict a player's ability</h3>
-    <p class="muted">Drag the sliders to set a psychological profile. The predicted overall is computed live from the OLS coefficients stored in Supabase.</p>
+    <h3 class="interactive-tag">&#9889; Try it: build a player, predict their ability</h3>
+    <p class="muted">Set a profile across all three groups. Predicted overall is computed live from the full-model coefficients in Supabase.</p>
     <div id="predictor" class="predictor"></div>
 
-    <h3>Predicted vs. actual ability</h3>
-    <p class="muted">Each point is a player; closer to the dashed line = better prediction.
-      <span class="interactive-tag">&#9889; Filter by position:</span></p>
+    <h3>Predicted vs. actual ability <span class="interactive-tag">&#9889; filter by position</span></h3>
+    <p class="muted">Each point is a player; closer to the dashed line = better prediction.</p>
     <select id="posFilter">
       <option value="ALL">All positions</option>
       <option value="GK">Goalkeepers</option>
@@ -174,8 +134,7 @@
     </select>
     <canvas id="scatterChart" height="220"></canvas>
 
-    <h3>Does the model work equally well by position?</h3>
-    <p class="muted">OLS R&sup2; fitted separately within each position group.</p>
+    <h3>Does the full model work equally well by position?</h3>
     <canvas id="positionChart" height="140"></canvas>
     <p id="position-text" class="muted"></p>
   </section>
@@ -184,30 +143,32 @@
     <h2>7. What it tells us</h2>
     <p id="interp-text" class="muted">Interpretation will populate once results load&hellip;</p>
     <p>
-      Read alongside section 3: if a profile of rated mental attributes explains a large
-      share of ability, it supports the coaching intuition that the mental side of the
-      game is deeply entangled with overall quality &mdash; while the unexplained remainder
-      is the room left for physique, technique and everything a mentality score cannot capture.
+      The headline is counter-intuitive: in this data the <span class="g-psych">psychological</span>
+      group alone explains far more of ability than <span class="g-tech">technique</span> or
+      <span class="g-phys">physique</span>, and adding the latter two lifts R&sup2; only modestly.
+      A big part of that is an artefact &mdash; FIFA's <em>reactions</em> and <em>composure</em>
+      ratings double as overall-quality summaries. The honest reading: rated mental attributes
+      track ability extremely closely <em>in this dataset</em>, technique adds a meaningful but
+      smaller slice, and raw physique explains the least on its own.
     </p>
   </section>
 
   <section id="repro">
     <h2>8. Reproduce it</h2>
-    <p>Everything is open source. See the <a id="repo-link" href="#" target="_blank" rel="noopener">GitHub repository</a>:</p>
+    <p>Open source &mdash; see the <a id="repo-link" href="#" target="_blank" rel="noopener">GitHub repository</a>:</p>
     <pre><code>pip install -r scripts/requirements.txt
 python scripts/download_data.py
-python scripts/run_schema.py          # create Supabase tables
-python scripts/load_to_supabase.py    # load players
-# then run sas/model.sas on SAS Viya: pulls data, fits OLS + tree,
-# writes results, coefficients, predictions and per-position fit back to Supabase</code></pre>
+python scripts/run_schema.py
+python scripts/load_to_supabase.py    # loads overall + 29 grouped predictors
+# then run sas/model.sas on SAS Viya: group-only models, full OLS, tree,
+# per-position fit -> all written back to Supabase</code></pre>
   </section>
 
 </main>
 
 <footer>
   <div class="wrap">
-    <p>Built with Supabase + SAS Viya. Data: FIFA 22 player dataset (proxy for psychological profile).
-       Not a validated psychometric instrument.</p>
+    <p>Built with Supabase + SAS Viya. Data: FIFA 22 player dataset (proxy attributes). Not a validated psychometric instrument.</p>
   </div>
 </footer>
 

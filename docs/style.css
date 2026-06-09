@@ -40,6 +40,15 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--muted);font-s
 .glossary dt{font-weight:700;color:var(--accent)}
 .glossary dd{margin:0;color:var(--muted)}
 
+/* group colour coding */
+.g-psych{color:#39d98a}
+.g-tech{color:#4aa3ff}
+.g-phys{color:#ffb347}
+.grouplist{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:14px 0}
+.grouplist>div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;color:var(--muted);font-size:.9rem}
+.grouplist h4{margin:0 0 6px;font-size:.95rem}
+.pred-head{margin:16px 0 6px;font-size:.95rem;border-bottom:1px solid var(--line);padding-bottom:4px}
+
 /* interactive bits */
 .interactive-tag{color:var(--accent)}
 select#posFilter{background:var(--panel);color:var(--ink);border:1px solid var(--line);

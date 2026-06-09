@@ -23,6 +23,30 @@ create table if not exists public.players (
     mentality_penalties     int,
     mentality_interceptions int,
     movement_reactions      int,   -- decision speed / game intelligence
+    -- TECHNICAL / SKILL (predictors)
+    attacking_crossing         int,
+    attacking_finishing        int,
+    attacking_heading_accuracy int,
+    attacking_short_passing    int,
+    attacking_volleys          int,
+    skill_dribbling            int,
+    skill_curve                int,
+    skill_fk_accuracy          int,
+    skill_long_passing         int,
+    skill_ball_control         int,
+    power_shot_power           int,
+    power_long_shots           int,
+    defending_marking_awareness int,
+    defending_standing_tackle  int,
+    defending_sliding_tackle   int,
+    -- PHYSICAL (predictors)
+    movement_acceleration  int,
+    movement_sprint_speed  int,
+    movement_agility       int,
+    movement_balance       int,
+    power_jumping          int,
+    power_stamina          int,
+    power_strength         int,
     created_at     timestamptz default now()
 );
 
@@ -44,6 +68,7 @@ create table if not exists public.model_results (
 create table if not exists public.model_coefficients (
     run_id     text references public.model_results(run_id) on delete cascade,
     variable   text,
+    "group"    text,   -- psychological | technical | physical
     estimate   numeric,
     std_error  numeric,
     t_value    numeric,
