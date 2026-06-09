@@ -1,0 +1,19 @@
+# Secrets
+.env
+.env.local
+*.key
+
+# Data (large raw files; keep small processed samples if needed)
+data/raw/
+data/*.csv
+!data/sample_*.csv
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
