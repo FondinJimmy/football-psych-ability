@@ -77,39 +77,111 @@
     </p>
   </section>
 
+  <section id="models101">
+    <h2>4. A crash course in the models</h2>
+    <p>We fit two different kinds of statistical model and compare them. Here's what each one does, in plain language.</p>
+
+    <h3>Linear regression (OLS)</h3>
+    <p>
+      <strong>Ordinary Least Squares</strong> draws the straight-line relationship that
+      best predicts ability from the seven mental attributes. It assumes each attribute
+      contributes a fixed amount: "every extra point of <em>reactions</em> adds about
+      half a point of overall ability", and adds those contributions up. The line is
+      chosen to make the <em>squared</em> prediction errors as small as possible.
+    </p>
+    <dl class="glossary">
+      <dt>R&sup2; (R-squared)</dt>
+      <dd>The share of the variation in ability the model explains, from 0 (useless) to
+        1 (perfect). R&sup2;&nbsp;=&nbsp;0.79 means 79% of why players differ in ability is
+        captured by the profile; the other 21% is everything the model can't see.</dd>
+      <dt>RMSE</dt>
+      <dd>Root-mean-square error &mdash; the typical size of a prediction miss, in rating
+        points. Lower is better.</dd>
+      <dt>Standardized coefficient (&beta;)</dt>
+      <dd>Each attribute on a common scale so they're comparable. A bigger bar = a
+        stronger <em>independent</em> pull on predicted ability. These can be negative:
+        once <em>reactions</em> is accounted for, a higher <em>positioning</em> score can
+        be associated with slightly lower overall &mdash; a sign the attributes overlap
+        (multicollinearity), so the model splits credit between them.</dd>
+      <dt>p-value</dt>
+      <dd>How confident we are an effect is real and not noise. Tiny p-values (&lt;0.001)
+        mean the relationship is statistically solid &mdash; easy to achieve here because
+        we have ~19,000 players.</dd>
+    </dl>
+
+    <h3>Decision tree</h3>
+    <p>
+      A <strong>decision tree</strong> takes the opposite approach: instead of one
+      straight line, it repeatedly splits players into groups with yes/no questions
+      ("is <em>reactions</em> above 70?", then "is <em>composure</em> above 60?") and
+      predicts the average ability within each final group. This lets it capture
+      <em>nonlinear</em> patterns and interactions a straight line misses &mdash; which is
+      why it usually fits a bit better.
+    </p>
+    <p class="caveat">
+      <strong>Why this isn't a random forest:</strong> a random forest averages hundreds
+      of trees and is the usual go-to, but that procedure isn't licensed on this SAS Viya
+      instance. We use a single tree (<code>PROC HPSPLIT</code>) as the nonlinear
+      comparison. Also note both R&sup2; values here are <em>in-sample</em> (measured on the
+      same data used to fit), so the tree's edge is partly genuine flexibility and partly
+      a tree's tendency to fit the training data closely &mdash; read the gap as
+      "nonlinearity helps", not "the tree is twice as good".
+    </p>
+  </section>
+
   <section id="method">
-    <h2>4. The pipeline</h2>
+    <h2>5. The pipeline</h2>
     <ol class="pipeline">
       <li><strong>Ingest</strong> &mdash; raw CSV cleaned in Python, loaded into a
         <strong>Supabase</strong> Postgres table (<code>players</code>).</li>
       <li><strong>Model</strong> &mdash; <strong>SAS&nbsp;Viya</strong> reads the table over the
-        Supabase REST API and fits a linear regression
-        (<code>PROC REG</code>, standardized betas) with <code>overall</code> as the explained variable.</li>
-      <li><strong>Persist</strong> &mdash; SAS Viya POSTs the fit statistics, coefficients
-        and predictions back into Supabase (<code>model_results</code>,
-        <code>model_coefficients</code>, <code>model_predictions</code>).</li>
+        Supabase REST API and fits both models (<code>PROC REG</code> and
+        <code>PROC HPSPLIT</code>) with <code>overall</code> as the explained variable.</li>
+      <li><strong>Persist</strong> &mdash; SAS Viya POSTs fit statistics, coefficients,
+        per-position results and predictions back into Supabase.</li>
       <li><strong>Visualize</strong> &mdash; this page reads those result tables live from
-        Supabase and renders them below.</li>
+        Supabase and renders everything below.</li>
     </ol>
   </section>
 
   <section id="results">
-    <h2>5. Results</h2>
+    <h2>6. Results</h2>
     <div id="status" class="status">Loading results from Supabase&hellip;</div>
 
     <div class="cards" id="metric-cards"></div>
 
+    <h3>Which model wins? OLS vs. decision tree</h3>
+    <p class="muted">R&sup2; = share of ability variation explained (higher is better). The tree's extra flexibility buys a modest gain.</p>
+    <canvas id="compareChart" height="120"></canvas>
+
     <h3>How strongly each mental attribute tracks ability</h3>
-    <p class="muted">Standardized model coefficients (larger bar = stronger independent contribution to predicted ability).</p>
-    <canvas id="coefChart" height="160"></canvas>
+    <p class="muted">Standardized OLS coefficients. Green = pulls ability up; red = pulls down once the others are held constant.</p>
+    <canvas id="coefChart" height="170"></canvas>
+
+    <h3 class="interactive-tag">&#9889; Try it: predict a player's ability</h3>
+    <p class="muted">Drag the sliders to set a psychological profile. The predicted overall is computed live from the OLS coefficients stored in Supabase.</p>
+    <div id="predictor" class="predictor"></div>
 
     <h3>Predicted vs. actual ability</h3>
-    <p class="muted">Each point is a player. The closer to the diagonal, the better the prediction.</p>
+    <p class="muted">Each point is a player; closer to the dashed line = better prediction.
+      <span class="interactive-tag">&#9889; Filter by position:</span></p>
+    <select id="posFilter">
+      <option value="ALL">All positions</option>
+      <option value="GK">Goalkeepers</option>
+      <option value="DEF">Defenders</option>
+      <option value="MID">Midfielders</option>
+      <option value="FWD">Forwards</option>
+    </select>
     <canvas id="scatterChart" height="220"></canvas>
+
+    <h3>Does the model work equally well by position?</h3>
+    <p class="muted">OLS R&sup2; fitted separately within each position group.</p>
+    <canvas id="positionChart" height="140"></canvas>
+    <p id="position-text" class="muted"></p>
   </section>
 
   <section id="interpretation">
-    <h2>6. What it tells us</h2>
+    <h2>7. What it tells us</h2>
     <p id="interp-text" class="muted">Interpretation will populate once results load&hellip;</p>
     <p>
       Read alongside section 3: if a profile of rated mental attributes explains a large
@@ -120,13 +192,14 @@
   </section>
 
   <section id="repro">
-    <h2>7. Reproduce it</h2>
+    <h2>8. Reproduce it</h2>
     <p>Everything is open source. See the <a id="repo-link" href="#" target="_blank" rel="noopener">GitHub repository</a>:</p>
     <pre><code>pip install -r scripts/requirements.txt
 python scripts/download_data.py
 python scripts/run_schema.py          # create Supabase tables
 python scripts/load_to_supabase.py    # load players
-# then run sas/model.sas on SAS Viya to model + write results back</code></pre>
+# then run sas/model.sas on SAS Viya: pulls data, fits OLS + tree,
+# writes results, coefficients, predictions and per-position fit back to Supabase</code></pre>
   </section>
 
 </main>

@@ -54,12 +54,22 @@ create table if not exists public.model_coefficients (
 
 -- 4. Predictions (actual vs predicted) for visualization
 create table if not exists public.model_predictions (
-    run_id     text references public.model_results(run_id) on delete cascade,
-    player_id  bigint,
-    actual     numeric,
-    predicted  numeric,
-    residual   numeric,
+    run_id          text references public.model_results(run_id) on delete cascade,
+    player_id       bigint,
+    actual          numeric,
+    predicted       numeric,
+    residual        numeric,
+    player_position text,
     primary key (run_id, player_id)
+);
+
+-- 5. Per-position model fit (how well the model works by position group)
+create table if not exists public.position_results (
+    run_id         text,
+    position_group text,
+    n_obs          int,
+    r_square       numeric,
+    primary key (run_id, position_group)
 );
 
 -- Allow anonymous read access for the public GitHub Pages site (RLS)
@@ -67,8 +77,10 @@ alter table public.players            enable row level security;
 alter table public.model_results      enable row level security;
 alter table public.model_coefficients enable row level security;
 alter table public.model_predictions  enable row level security;
+alter table public.position_results   enable row level security;
 
 create policy "public read players"      on public.players            for select using (true);
 create policy "public read results"      on public.model_results      for select using (true);
 create policy "public read coefficients" on public.model_coefficients for select using (true);
 create policy "public read predictions"  on public.model_predictions  for select using (true);
+create policy "public read positions"    on public.position_results   for select using (true);
